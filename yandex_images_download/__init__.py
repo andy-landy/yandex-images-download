@@ -1,8 +1,5 @@
-from __future__ import absolute_import
-
-def run_main():
-    from yandex_images_download.yandex_images_download import main
-    main()
-
-if __name__ == '__main__':
-    run_main()
+from download import download_image, download_and_save_image, \
+    download_images, download_and_save_images
+from search_page import create_chrome_driver, get_image_infos, Config, \
+    Env, Query, default_env, default_logger, default_config
+from tool import main
