@@ -3,28 +3,12 @@ import logging
 import random
 from dataclasses import dataclass
 from time import sleep
-from typing import Dict, Any, List, Iterable, NoReturn, Tuple, Union, Optional
+from typing import Dict, Any, List, Iterable, NoReturn, Tuple, Union, Optional, Callable
 from urllib.parse import urlencode
 
 from selenium import webdriver
 from selenium.webdriver.remote.webdriver import WebDriver as Driver
 from selenium.webdriver.remote.webelement import WebElement as Element
-
-
-"""
-    TODO 
-    * captcha
-    * tools
-    * examples
-    * logging
-    * pypi
-    * more browsers?
-    * disclaimer
-    * merge
-    * update pypi
-    * test on others
-    * go for the stars
-"""
 
 
 @dataclass
@@ -41,14 +25,19 @@ class ImageInfo:
     thumb_png: bytes
 
 
+def report_captcha_to_terminal_and_wait(driver: Driver) -> NoReturn:
+    input('please switch to the browser and manually solve the captcha, then press enter')
+
+
 @dataclass
 class Config:
     scroll_interval_sec: float
     max_scroll_retries: int
     retry_open_interval_sec: float
+    report_captcha_and_wait: Callable[[Driver], NoReturn]
 
 
-default_config = Config(0.5, 6, 2)
+default_config = Config(0.5, 6, 2, report_captcha_to_terminal_and_wait)
 
 
 @dataclass
@@ -84,7 +73,7 @@ def open_search_page(driver: Driver, env: Env, query: Query) -> NoReturn:
         driver.get(f'{path}?{urlencode(params)}')  # TODO test captcha args
 
         if shows_captcha(driver):
-            report_captcha_and_wait()
+            env.config.report_captcha_and_wait(driver)
             # TODO redirect or wait or get again?
 
         if shows_valid_page(driver):
@@ -105,17 +94,18 @@ def query_to_path_and_params(query: Query) -> Tuple[str, Dict[str, Any]]:
 
 def iter_image_infos(driver: Driver, env: Env, num_elements: int, with_thumbs: bool) -> Iterable[Element]:
     yielded_ids = set()
-
     retries = 0
-    while len(yielded_ids) < num_elements:
+    while True:
         old_num_yielded = len(yielded_ids)
 
         for element in find_all(driver, 'serp-item'):
-            if element.id not in yielded_ids and len(yielded_ids) < num_elements:
+            if element.id not in yielded_ids:
                 image_info = element_to_image_info(element, with_thumbs)
                 if image_info:
                     yield image_info
                     yielded_ids.add(element.id)
+                    if len(yielded_ids) == num_elements:
+                        return
 
         retries = (retries + 1) if len(yielded_ids) == old_num_yielded else 0
         if retries > env.config.max_scroll_retries:
@@ -127,11 +117,15 @@ def iter_image_infos(driver: Driver, env: Env, num_elements: int, with_thumbs: b
 
 def element_to_image_info(element: Element, with_thumbs: bool) -> Optional[ImageInfo]:
     url = json.loads(element.get_attribute('data-bem') or "{}").get('serp-item', {}).get('img_href', None)
-    thumb = find(element, 'serp-item__thumb') if with_thumbs else None
-    if url and (thumb or not with_thumbs):
-        return ImageInfo(url=url, thumb_png=thumb.screenshot_as_png if with_thumbs else None)
-    else:
+    if not url:
         return None
+
+    thumb = find(element, 'serp-item__thumb') if with_thumbs else None
+    thumb_png = thumb_png.screenshot_as_png if thumb else None
+    if with_thumbs and not thumb_png:
+        return None
+    
+    return ImageInfo(url=url, thumb_png=thumb_png)
 
 
 def shows_captcha(driver: Driver) -> bool:
@@ -140,10 +134,6 @@ def shows_captcha(driver: Driver) -> bool:
 
 def shows_valid_page(driver: Driver) -> bool:
     return bool(find_all(driver, 'serp-item'))
-
-
-def report_captcha_and_wait() -> NoReturn:
-    input('please switch to the browser and manually solve the captcha, then press enter')
 
 
 def rand_sleep(dur_sec: float) -> NoReturn:

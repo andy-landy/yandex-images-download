@@ -42,6 +42,6 @@ def download_and_save_images(urls: List[str], dir_path: str, prefix: str,
 
 
 def create_file(url: str, dir_path: str, prefix: str) -> str:
-    tokens = urlparse(url).path.split('.')
+    tokens = urlparse(url).path.split('/')[-1].split('.')
     suffix = ('.' + tokens[-1]) if len(tokens) > 1 else ''
     return tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir_path, text=False)[1]
